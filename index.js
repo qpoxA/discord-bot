@@ -2,10 +2,10 @@ const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuild
 const fs = require('fs');
 
 // ==================== CONFIG ====================
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID || '1491018433620611224';
-const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || '1456113452798971935';
-const TICKET_CHANNEL_ID = '1430332532557222008';
+const TOKEN = process.env.DISCORD_TOKEN || process.env.TOKEN; 
+const CLIENT_ID = '1491018433620611224'; 
+const LOG_CHANNEL_ID = '1456113452798971935'; 
+const TICKET_CHANNEL_ID = '1430332532557222008'; 
 const DB_FILE = './data.json';
 // ================================================
 
@@ -22,17 +22,21 @@ function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
     fs.writeFileSync(DB_FILE, JSON.stringify({ admins: {}, alerts: {} }));
   }
-  const db = JSON.parse(fs.readFileSync(DB_FILE));
-  if (!db.admins) db.admins = {};
-  if (!db.alerts) db.alerts = {};
-  return db;
+  try {
+    const data = JSON.parse(fs.readFileSync(DB_FILE));
+    if (!data.admins) data.admins = {};
+    if (!data.alerts) data.alerts = {};
+    return data;
+  } catch (e) {
+    return { admins: {}, alerts: {} };
+  }
 }
 
 function saveDB(db) {
   fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
-// --- وظائف المساعدة ---
+// --- وظائف المساعدة والعمليات الحسابية ---
 function getAdminByMinecraft(db, mcName) {
   const lower = mcName.toLowerCase();
   for (const [disc, data] of Object.entries(db.admins)) {
@@ -79,12 +83,12 @@ function calcScore(db, discKey) {
   return Math.round(((tickets / maxTickets) * 70) + ((ms / maxMs) * 30));
 }
 
-// --- التتبع (Logs & Tickets) ---
+// --- تتبع السجلات (Logs) والتذاكر ---
 client.on('messageCreate', async (message) => {
   if (!message.author.bot) return;
   const db = loadDB();
 
-  // تتبع الدخول والخروج
+  // تتبع الدخول والخروج من القناة المخصصة
   if (message.channelId === LOG_CHANNEL_ID) {
     let content = message.embeds.length > 0 ? `${message.embeds[0].title}\n${message.embeds[0].description}` : message.content;
     const joinMatch = content.match(/^(.+?) joined the network/m);
@@ -110,12 +114,11 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // تتبع التذاكر
+  // تتبع إغلاق التذاكر
   if (message.channelId === TICKET_CHANNEL_ID) {
     for (const embed of message.embeds) {
       if (embed.title === 'Ticket Closed') {
-        const fields = embed.fields || [];
-        const executorField = fields.find(f => f.name.includes('Executor'));
+        const executorField = (embed.fields || []).find(f => f.name.includes('Executor'));
         if (executorField) {
           const execName = executorField.value.replace('@', '').toLowerCase();
           const discKey = getAdminByDiscord(db, execName);
@@ -129,7 +132,7 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// --- Slash Commands Setup ---
+// --- إعداد الأوامر ---
 const commands = [
   new SlashCommandBuilder().setName('addadmin').setDescription('إضافة أدمن جديد').addStringOption(o => o.setName('discord').setDescription('يوزر الديسكورد').setRequired(true)).addStringOption(o => o.setName('minecraft').setDescription('يوزر الماين').setRequired(true)),
   new SlashCommandBuilder().setName('removeadmin').setDescription('حذف أدمن').addStringOption(o => o.setName('discord').setDescription('يوزر الديسكورد').setRequired(true)),
@@ -139,19 +142,24 @@ const commands = [
   new SlashCommandBuilder().setName('hours').setDescription('ساعات أدمن').addStringOption(o => o.setName('discord').setDescription('يوزر الديسكورد').setRequired(true)),
   new SlashCommandBuilder().setName('online').setDescription('المتصلون الآن'),
   new SlashCommandBuilder().setName('lastseen').setDescription('آخر ظهور').addStringOption(o => o.setName('discord').setDescription('يوزر الديسكورد').setRequired(true)),
-  new SlashCommandBuilder().setName('alert').setDescription('تنبيه غياب').addStringOption(o => o.setName('discord').setDescription('يوزر الديسكورد').setRequired(true)).addIntegerOption(o => o.setName('hours').setDescription('عدد الساعات').setRequired(true)),
-  new SlashCommandBuilder().setName('report').setDescription('تقرير شامل').addStringOption(o => o.setName('period').setDescription('المدة').setRequired(true).addChoices({name:'يومي',value:'daily'},{name:'أسبوعي',value:'weekly'}))
+  new SlashCommandBuilder().setName('report').setDescription('تقرير شامل').addStringOption(o => o.setName('period').setDescription('المدة').setRequired(true).addChoices({name:'يومي',value:'daily'},{name:'أسبوعي',value:'weekly'})),
+  new SlashCommandBuilder().setName('alert').setDescription('تنبيه غياب').addStringOption(o => o.setName('discord').setDescription('يوزر الديسكورد').setRequired(true)).addIntegerOption(o => o.setName('hours').setDescription('عدد الساعات').setRequired(true))
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 client.once('ready', async () => {
-  console.log(`✅ ${client.user.tag} جاهز!`);
-  await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-  setInterval(checkAlerts, 15 * 60 * 1000); // فحص التنبيهات كل 15 دقيقة
+  console.log(`✅ ${client.user.tag} جاهز للعمل!`);
+  try {
+    await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+    console.log('✅ تم تحديث الأوامر بنجاح');
+  } catch (err) {
+    console.error('❌ فشل تسجيل الأوامر:', err);
+  }
+  setInterval(checkAlerts, 15 * 60 * 1000); 
 });
 
-// --- معالجة الأوامر ---
+// --- معالجة التفاعلات (Commands Interaction) ---
 client.on('interactionCreate', async (i) => {
   if (!i.isChatInputCommand()) return;
   const db = loadDB();
@@ -161,12 +169,22 @@ client.on('interactionCreate', async (i) => {
     const mc = i.options.getString('minecraft');
     db.admins[disc] = { minecraftName: mc, tickets: 0, totalMs: 0, lastJoin: null, lastLeave: null };
     saveDB(db);
-    return i.reply(`✅ تم ربط **${disc}** بـ **${mc}**`);
+    return i.reply(`✅ تم إضافة **${disc}** وربطه بـ **${mc}**`);
+  }
+
+  if (i.commandName === 'removeadmin') {
+    const disc = i.options.getString('discord');
+    const key = getAdminByDiscord(db, disc);
+    if (!key) return i.reply('❌ هذا الأدمن غير موجود.');
+    delete db.admins[key];
+    saveDB(db);
+    return i.reply(`✅ تم حذف **${key}** بنجاح.`);
   }
 
   if (i.commandName === 'admins') {
     const list = Object.entries(db.admins).map(([disc, d]) => `**${disc}** ← ⛏️ ${d.minecraftName}`).join('\n');
-    return i.reply({ embeds: [new EmbedBuilder().setTitle('👥 قائمة الأدمن').setDescription(list || 'لا يوجد أدمينات')] });
+    const embed = new EmbedBuilder().setTitle('👥 قائمة الأدمن').setDescription(list || 'لا يوجد أدمينات').setColor(0x3498DB);
+    return i.reply({ embeds: [embed] });
   }
 
   if (i.commandName === 'score') {
@@ -174,12 +192,25 @@ client.on('interactionCreate', async (i) => {
     const key = getAdminByDiscord(db, disc);
     if (!key) return i.reply('❌ غير موجود.');
     const score = calcScore(db, key);
-    return i.reply({ embeds: [new EmbedBuilder().setTitle(`📊 تفاعل ${key}`).setDescription(`${scoreBar(score)}\n🎫 تكتات: ${db.admins[key].tickets || 0}`)] });
+    const embed = new EmbedBuilder()
+      .setTitle(`📊 تفاعل ${key}`)
+      .setDescription(`${scoreBar(score)}\n🎫 تكتات مغلقة: ${db.admins[key].tickets || 0}\n🕒 الساعات: ${formatDuration(db.admins[key].totalMs)}`)
+      .setColor(0x00FF00);
+    return i.reply({ embeds: [embed] });
   }
 
   if (i.commandName === 'online') {
     const online = Object.entries(db.admins).filter(([_, d]) => d.lastJoin).map(([k, d]) => `🟢 **${k}** (دخل <t:${Math.floor(d.lastJoin/1000)}:R>)`);
-    return i.reply(online.length > 0 ? online.join('\n') : '🚫 لا يوجد أحد متصل');
+    return i.reply(online.length > 0 ? online.join('\n') : '🚫 لا يوجد أحد متصل حالياً');
+  }
+
+  if (i.commandName === 'lastseen') {
+    const disc = i.options.getString('discord');
+    const key = getAdminByDiscord(db, disc);
+    if (!key) return i.reply('❌ غير موجود.');
+    const d = db.admins[key];
+    const time = d.lastLeave ? `<t:${Math.floor(d.lastLeave / 1000)}:R>` : 'غير معروف';
+    return i.reply(`👁️ آخر ظهور لـ **${key}** كان: ${time} ${d.lastJoin ? '(أونلاين الآن)' : ''}`);
   }
 
   if (i.commandName === 'alert') {
@@ -189,10 +220,8 @@ client.on('interactionCreate', async (i) => {
     if (!key) return i.reply('❌ الأدمن غير مسجل.');
     db.alerts[key] = { hours: hrs, channelId: i.channelId };
     saveDB(db);
-    return i.reply(`✅ سيتم تنبيهك هنا لو غاب **${key}** لأكثر من **${hrs}** ساعة.`);
+    return i.reply(`🔔 سيتم إرسال تنبيه في هذه القناة لو غاب **${key}** لأكثر من **${hrs}** ساعة.`);
   }
-  
-  // يمكنك استكمال بقية الأوامر (hours, lastseen, report) بنفس النمط...
 });
 
 async function checkAlerts() {
@@ -202,9 +231,9 @@ async function checkAlerts() {
     if (!data || data.lastJoin) continue;
     const hrsOffline = (Date.now() - (data.lastLeave || 0)) / 3600000;
     if (hrsOffline >= alert.hours) {
-      const channel = await client.channels.fetch(alert.channelId);
-      if (channel) channel.send(`⚠️ تنبيه: **${key}** غائب منذ **${Math.floor(hrsOffline)}** ساعة!`);
-      delete db.alerts[key];
+      const channel = await client.channels.fetch(alert.channelId).catch(() => null);
+      if (channel) channel.send(`⚠️ **تنبيه إداري:** الأدمن **${key}** غائب منذ أكثر من **${Math.floor(hrsOffline)}** ساعة!`);
+      delete db.alerts[key]; 
       saveDB(db);
     }
   }
