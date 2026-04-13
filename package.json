@@ -1,14 +1,15 @@
 {
-  "name": "minecraft-admin-bot",
+  "name": "discord-bot",
   "version": "1.0.0",
-  "description": "Discord bot to track Minecraft admin activity and tickets",
-  "main": "bot.js",
+  "description": "Minecraft Admin Activity Bot",
+  "main": "index.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1"
   },
-  "author": "",
-  "license": "ISC"
+  "engines": {
+    "node": ">=16.0.0"
+  }
 }
