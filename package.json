@@ -1,15 +1,11 @@
 {
-  "name": "discord-bot",
+  "name": "minecraft-admin-bot",
   "version": "1.0.0",
-  "description": "Minecraft Admin Activity Bot",
-  "main": "index.js",
+  "main": "bot.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node bot.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1"
-  },
-  "engines": {
-    "node": ">=16.0.0"
   }
 }
